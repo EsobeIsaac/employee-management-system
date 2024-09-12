@@ -44,7 +44,10 @@ router.post("/adminlogin", (req, res) => {
 router.get('/category', (req, res) => {
     const sql = "SELECT * FROM category";
     con.query(sql, (err, result) => {
-        if(err) return res.json({Status: false, Error: "Query Error"})
+        if(err) {
+            console.log(err)
+            return res.json({Status: false, Error: "Query Error"})
+        }
         return res.json({Status: true, Result: result})
     })
 })
@@ -67,7 +70,7 @@ router.post('/add_category', (req, res) => {
 
 router.post('/add_employee', upload.single('image'), (req, res) => {
     const sql = `INSERT INTO employee 
-    (name, email, password, address, salary, image, category_id) 
+    (name, email, dob, password, address, salary, image, category_id) 
     VALUES (?)`;
 
     // Check if the email already exists
@@ -87,18 +90,24 @@ router.post('/add_employee', upload.single('image'), (req, res) => {
 
             try {
                 // Upload the image to Cloudinary
-                let result = await cloudinaryUpload(req.file.buffer);
+                let imageUrl
+
+                if(req.file?.buffer) {
+                    let result = await cloudinaryUpload(req.file.buffer);
+                    imageUrl = result.secure_url;
+
+                }
 
                 // Image upload successful, get the Cloudinary URL
-                const imageUrl = result.secure_url;
 
                 const values = [
                     req.body.name,
                     req.body.email,
+                    req.body.dob,
                     hash,
                     req.body.address,
                     req.body.salary,
-                    imageUrl,  // Use the Cloudinary URL here
+                    imageUrl ? imageUrl : 'https://res.cloudinary.com/dhguwu00q/image/upload/v1725940438/tzp02l5ppbkjykn0akgv.png',  // Use the Cloudinary URL here
                     req.body.category_id
                 ];
 
@@ -123,7 +132,10 @@ router.post('/add_employee', upload.single('image'), (req, res) => {
 router.get('/employee', (req, res) => {
     const sql = "SELECT * FROM employee";
     con.query(sql, (err, result) => {
-        if(err) return res.json({Status: false, Error: "Query Error"})
+        if(err) {
+            console.log(err)
+            return res.json({Status: false, Error: "Query Error"})
+        }
             let resultArray = [...result]
 
                     // Convert con.query to return a promise
@@ -143,7 +155,7 @@ router.get('/employee', (req, res) => {
                 const resultWithCategory = await Promise.all(
                 resultArray.map(async (item) => {
                     // Perform the query for each item
-                    const category = await queryPromise("SELECT * FROM CATEGORY WHERE id = ?", [item.category_id] | "1");
+                    const category = await queryPromise("SELECT * FROM category WHERE id = ?", [item.category_id]);
                     
                     if (category.length > 0) {
                     item.category_name = category[0].name; // Assign the category name
@@ -158,7 +170,8 @@ router.get('/employee', (req, res) => {
                 // After all queries have completed, send the final array as response
                 return res.json({Status: true, Result: resultWithCategory});
             } catch (err) {
-                return res.json({ Status: false, Error: "Query Error" });
+                console.log(err)
+                return res.json({Status: false, Error: "Query Error"}) 
             }
             };
 
@@ -192,7 +205,7 @@ router.get('/employee/:id', (req, res) => {
                 const resultWithCategory = await Promise.all(
                 resultArray.map(async (item) => {
                     // Perform the query for each item
-                    const category = await queryPromise("SELECT * FROM CATEGORY WHERE id = ?", [item.category_id] | "1");
+                    const category = await queryPromise("SELECT * FROM category WHERE id = ?", [item.category_id] | "1");
                     
                     if (category.length > 0) {
                     item.category_name = category[0].name; // Assign the category name
@@ -220,22 +233,42 @@ router.get('/employee/:id', (req, res) => {
     })
 })
 
-router.put('/edit_employee/:id', (req, res) => {
+router.put('/edit_employee/:id', upload.single('image'), async(req, res) => {
     const id = req.params.id;
     const sql = `UPDATE employee 
-        set name = ?, email = ?, salary = ?, address = ?, category_id = ? 
+        set name = ?, email = ?, salary = ?, address = ?, category_id = ?, image = ? 
         Where id = ?`
-    const values = [
-        req.body.name,
-        req.body.email,
-        req.body.salary,
-        req.body.address,
-        req.body.category_id
-    ]
-    con.query(sql,[...values, id], (err, result) => {
-        if(err) return res.json({Status: false, Error: "Query Error"+err})
-        return res.json({Status: true, Result: result})
+
+    
+
+    con.query(`SELECT * FROM employee WHERE id = ?`,[id], async(err, result) => {
+        console.log(err)
+        if(err) return res.json({Status: false, Error: "Error"+err})
+        console.log(result)
+        let employee = result[0]
+        let imageUrl;
+
+        if(req.file?.buffer) {
+            let imageRes = await cloudinaryUpload(req.file.buffer);
+            imageUrl = imageRes.secure_url;
+        }
+
+        const values = [
+            req.body.name,
+            req.body.email,
+            req.body.salary,
+            req.body.address,
+            req.body.category_id,
+            imageUrl ? imageUrl : employee.image,
+        ]
+        con.query(sql,[...values, id], (err, result) => {
+            console.log(err)
+            if(err) return res.json({Status: false, Error: "Query Error"+err})
+            return res.json({Status: true, Result: result})
+        })
     })
+
+    
 })
 
 router.delete('/delete_employee/:id', (req, res) => {
